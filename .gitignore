@@ -1,0 +1,9 @@
+*.dmg
+*.pkg
+.claude/
+build/
+rastertoxqx
+xqxdecode
+*.o
+*.dl
+REWRITE-PLAN.md
