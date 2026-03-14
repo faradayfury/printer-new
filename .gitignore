@@ -6,6 +6,8 @@ foo2zjs/xqxdecode
 foo2zjs/sihpP1005.dl
 *.o
 *.dSYM/
+*.pkg
+build/
 
 # macOS
 .DS_Store
