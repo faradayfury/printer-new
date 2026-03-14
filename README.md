@@ -69,4 +69,4 @@ Beyond HP, the same porting pattern could support printers from Dell, Xerox, Sam
 
 The install script currently only supports the P1007. Support for the other models listed above is in progress — they need their own PPD files and firmware mappings, which I'm working on.
 
-If you have one of these printers and a Mac with Apple Silicon, the most useful thing you can do right now is [open an issue](https://github.com/faradayfury/printer-new/issues/new) with your printer model and macOS version. That helps me prioritize which models to add next, and I'll reach out when there's something for you to test.
+If you have one of these printers and a Mac with Apple Silicon, the most useful thing you can do right now is [open an issue](https://github.com/faradayfury/hp-laserjet-macos-driver/issues/new) with your printer model and macOS version. That helps me prioritize which models to add next, and I'll reach out when there's something for you to test.
