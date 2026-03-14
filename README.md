@@ -67,9 +67,6 @@ Beyond HP, the same porting pattern could support printers from Dell, Xerox, Sam
 
 ### How to help
 
-If you have one of these printers and a Mac with Apple Silicon, I'd appreciate help testing. You don't need to be a developer.
+The install script currently only supports the P1007. Support for the other models listed above is in progress — they need their own PPD files and firmware mappings, which I'm working on.
 
-1. [Open an issue](https://github.com/faradayfury/printer-new/issues/new) with your printer model and macOS version
-2. If you're comfortable running terminal commands, try `sudo ./install.sh` and let me know if it prints
-
-I'll work through any issues with you from there.
+If you have one of these printers and a Mac with Apple Silicon, the most useful thing you can do right now is [open an issue](https://github.com/faradayfury/printer-new/issues/new) with your printer model and macOS version. That helps me prioritize which models to add next, and I'll reach out when there's something for you to test.
