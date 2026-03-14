@@ -1,0 +1,149 @@
+#!/bin/sh
+#
+# foomatic-rip — CUPS filter for foo2xqx printers on macOS
+#
+# Reads PPD options, builds gs|foo2xqx pipeline, outputs XQX to stdout.
+# All logic inlined to avoid sandbox restrictions on external scripts.
+#
+
+JOB_ID="${1:-0}"
+USER="${2:-unknown}"
+TITLE="${3:-untitled}"
+COPIES="${4:-1}"
+OPTIONS="${5:-}"
+FILENAME="${6:-}"
+
+PPD="${PPD:-}"
+FILTER_DIR=$(dirname "$0")
+
+log() { echo "DEBUG: foomatic-rip: $*" >&2; }
+
+log "Starting: job=$JOB_ID copies=$COPIES"
+
+if [ -z "$PPD" ] || [ ! -f "$PPD" ]; then
+    echo "ERROR: foomatic-rip: No PPD file" >&2
+    exit 1
+fi
+
+# --- Read input from file if provided ---
+if [ -n "$FILENAME" ] && [ -f "$FILENAME" ]; then
+    exec < "$FILENAME"
+fi
+
+# --- Build args from PPD default option settings ---
+ARGS=""
+for option_name in $(sed -n 's/^\*FoomaticRIPOption \([^:]*\):.*/\1/p' "$PPD"); do
+    default_val=$(sed -n "s/^\*Default${option_name}: *//p" "$PPD" | head -1 | tr -d ' ')
+    [ -z "$default_val" ] && continue
+    setting=$(sed -n "s/^\*FoomaticRIPOptionSetting ${option_name}=${default_val}:.*\"\(.*\)\".*/\1/p" "$PPD" | head -1)
+    [ -n "$setting" ] && ARGS="$ARGS $setting"
+done
+
+# Override with CUPS job options
+for opt in $OPTIONS; do
+    key="${opt%%=*}"
+    val="${opt#*=}"
+    if [ "$key" != "$val" ]; then
+        setting=$(sed -n "s/^\*FoomaticRIPOptionSetting ${key}=${val}:.*\"\(.*\)\".*/\1/p" "$PPD" | head -1)
+        [ -n "$setting" ] && ARGS="$ARGS $setting"
+    fi
+done
+
+log "PPD args: $ARGS"
+
+# --- Parse args (same flags as foo2xqx-wrapper) ---
+RES=1200x600
+PAPER=1
+MEDIA=1
+SOURCE=7
+DUPLEX=1
+NCOPIES=1
+DENSITY=3
+SAVETONER=""
+GSOPTS=""
+
+set -- $ARGS
+while getopts "r:p:m:s:d:n:tT:q:o:D:" opt 2>/dev/null; do
+    case $opt in
+        r) RES="$OPTARG" ;;
+        p) PAPER="$OPTARG" ;;
+        m) MEDIA="$OPTARG" ;;
+        s) SOURCE="$OPTARG" ;;
+        d) DUPLEX="$OPTARG" ;;
+        n) NCOPIES="$OPTARG" ;;
+        t) SAVETONER="-t" ;;
+        T) DENSITY="$OPTARG" ;;
+        q) case "$OPTARG" in
+               as|wts) GSOPTS="-dCOLORSCREEN -dMaxBitmap=500000000" ;;
+               1)      GSOPTS="-dCOLORSCREEN" ;;
+           esac ;;
+        *) ;;
+    esac
+done
+
+# --- Map paper code to GS paper name and pixel dimensions (at 1200x600) ---
+case "$PAPER" in
+    1)   paper=letter;     XDIM=10200; YDIM=6600 ;;
+    5)   paper=legal;      XDIM=10200; YDIM=8400 ;;
+    7)   paper=executive;  XDIM=8700;  YDIM=6300 ;;
+    9)   paper=a4;         XDIM=9920;  YDIM=7016 ;;
+    11)  paper=a5;         XDIM=6992;  YDIM=4960 ;;
+    13)  paper=b5;         XDIM=8598;  YDIM=6070 ;;
+    20)  paper=env10;      XDIM=4950;  YDIM=5700 ;;
+    27)  paper=envDL;      XDIM=5200;  YDIM=5200 ;;
+    28)  paper=envC5;      XDIM=7650;  YDIM=5408 ;;
+    34)  paper=envB5;      XDIM=8316;  YDIM=5892 ;;
+    37)  paper=envMonarch; XDIM=4650;  YDIM=4500 ;;
+    257) paper=executive;  XDIM=9306;  YDIM=6448 ;;
+    263) paper=executive;  XDIM=8692;  YDIM=6142 ;;
+    264) paper=executive;  XDIM=9212;  YDIM=6378 ;;
+    *)   paper=letter;     XDIM=10200; YDIM=6600 ;;
+esac
+
+case "$RES" in
+    600x600)  XDIM=$((XDIM / 2)) ;;
+    1200x600) ;;
+esac
+
+DIM="${XDIM}x${YDIM}"
+
+# --- Locate binaries ---
+# foo2xqx: prefer copy in filter dir
+FOO2XQX="$FILTER_DIR/foo2xqx"
+if [ ! -x "$FOO2XQX" ] 2>/dev/null; then
+    FOO2XQX=/usr/local/bin/foo2xqx
+fi
+
+# gs: use bundled copy in CUPS filter dir (avoids CUPS sandbox blocks on dylib loading)
+GS=/usr/libexec/cups/filter/gs-bundled
+GS_RES=/usr/libexec/cups/filter/gs-res
+
+log "Using gs=$GS foo2xqx=$FOO2XQX"
+
+log "Pipeline: $GS -r$RES -g$DIM | $FOO2XQX -r$RES -g$DIM -p$PAPER -m$MEDIA -n$NCOPIES -d$DUPLEX -s$SOURCE -T$DENSITY $SAVETONER"
+
+# --- Run pipeline: gs → foo2xqx ---
+"$GS" -q -dBATCH -dSAFER -dQUIET -dNOPAUSE \
+    -I"$GS_RES/Resource/Init" \
+    -I"$GS_RES/lib" \
+    -I"$GS_RES/Resource/Font" \
+    -I"$GS_RES/fonts" \
+    -sPAPERSIZE="$paper" \
+    -g"$DIM" \
+    -r"$RES" \
+    -sDEVICE=pbmraw \
+    $GSOPTS \
+    -sOutputFile=- \
+    - \
+| "$FOO2XQX" \
+    -r"$RES" \
+    -g"$DIM" \
+    -p"$PAPER" \
+    -m"$MEDIA" \
+    -n"$NCOPIES" \
+    -d"$DUPLEX" \
+    -s"$SOURCE" \
+    $SAVETONER \
+    -T"$DENSITY"
+
+exit $?

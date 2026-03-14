@@ -1,0 +1,121 @@
+#!/bin/sh
+#
+# CUPS filter for HP LaserJet P1007 (and P1005/P1006/P1008/P1505)
+# Converts PostScript input to XQX format via Ghostscript + foo2xqx
+#
+# Called by CUPS as:
+#   filter job-id user title copies options [file]
+#
+# Input:  PostScript (from stdin or file argument)
+# Output: XQX stream (to stdout, sent to printer by CUPS)
+#
+
+FILTER_DIR=$(dirname "$0")
+
+# Look for foo2xqx in the same directory as this filter, or in PATH
+if [ -x "$FILTER_DIR/foo2xqx" ]; then
+    FOO2XQX="$FILTER_DIR/foo2xqx"
+else
+    FOO2XQX=$(which foo2xqx 2>/dev/null)
+fi
+
+if [ -z "$FOO2XQX" ]; then
+    echo "ERROR: foo2xqx not found" >&2
+    exit 1
+fi
+
+GS=$(which gs 2>/dev/null)
+if [ -z "$GS" ]; then
+    # Common Homebrew locations
+    for p in /opt/homebrew/bin/gs /usr/local/bin/gs; do
+        if [ -x "$p" ]; then
+            GS="$p"
+            break
+        fi
+    done
+fi
+
+if [ -z "$GS" ]; then
+    echo "ERROR: Ghostscript (gs) not found" >&2
+    exit 1
+fi
+
+# Parse CUPS arguments
+JOBID="${1:-0}"
+USER="${2:-unknown}"
+TITLE="${3:-untitled}"
+COPIES="${4:-1}"
+OPTIONS="${5:-}"
+
+# If a filename is provided as 6th arg, redirect stdin from it
+if [ -n "$6" ]; then
+    exec < "$6"
+fi
+
+# Parse PPD options from $OPTIONS
+PAPER=1         # letter
+MEDIA=1         # plain
+RES="600x600"
+SOURCE=7        # auto
+DUPLEX=1        # off
+DENSITY=3       # medium
+
+for opt in $OPTIONS; do
+    case "$opt" in
+        PageSize=Letter)     PAPER=1 ;;
+        PageSize=Legal)      PAPER=5 ;;
+        PageSize=Executive)  PAPER=7 ;;
+        PageSize=A4)         PAPER=9 ;;
+        PageSize=A5)         PAPER=11 ;;
+        PageSize=B5)         PAPER=13 ;;
+        MediaType=Plain)     MEDIA=1 ;;
+        MediaType=Transparency) MEDIA=2 ;;
+        MediaType=Envelope)  MEDIA=257 ;;
+        Resolution=600x600dpi)  RES="600x600" ;;
+        Resolution=1200x600dpi) RES="1200x600" ;;
+        Density=1)           DENSITY=1 ;;
+        Density=2)           DENSITY=2 ;;
+        Density=3)           DENSITY=3 ;;
+        Density=4)           DENSITY=4 ;;
+        Density=5)           DENSITY=5 ;;
+    esac
+done
+
+# Set page dimensions based on paper size and resolution
+case "$PAPER" in
+    1)  paper=letter;    XDIM=10200; YDIM=6600 ;;
+    5)  paper=legal;     XDIM=10200; YDIM=8400 ;;
+    7)  paper=executive; XDIM=8700;  YDIM=6300 ;;
+    9)  paper=a4;        XDIM=9920;  YDIM=7016 ;;
+    11) paper=a5;        XDIM=6992;  YDIM=4960 ;;
+    13) paper=b5;        XDIM=8598;  YDIM=6070 ;;
+    *)  paper=letter;    XDIM=10200; YDIM=6600 ;;
+esac
+
+# Adjust X dimension for resolution
+case "$RES" in
+    600x600)   XDIM=$((XDIM / 2)) ;;
+    1200x600)  ;;
+esac
+
+DIM="${XDIM}x${YDIM}"
+
+# Run the pipeline: Ghostscript → foo2xqx
+"$GS" -q -dBATCH -dSAFER -dQUIET -dNOPAUSE \
+    -sPAPERSIZE="$paper" \
+    -g"$DIM" \
+    -r"$RES" \
+    -sDEVICE=pbmraw \
+    -sOutputFile=- \
+    - \
+| "$FOO2XQX" \
+    -r"$RES" \
+    -g"$DIM" \
+    -p"$PAPER" \
+    -m"$MEDIA" \
+    -n"$COPIES" \
+    -d"$DUPLEX" \
+    -s"$SOURCE" \
+    -T"$DENSITY"
+
+exit $?

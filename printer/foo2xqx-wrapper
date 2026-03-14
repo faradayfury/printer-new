@@ -1,0 +1,114 @@
+#!/bin/sh
+#
+# foo2xqx-wrapper — Minimal wrapper for foomatic-rip → foo2xqx pipeline
+#
+# Called by foomatic-rip with args expanded from PPD FoomaticRIPOptionSettings.
+# Reads PostScript on stdin, outputs XQX on stdout.
+#
+# Supported flags (matching foo2zjs PPD option settings):
+#   -r RES    Resolution (e.g. 1200x600, 600x600)
+#   -p CODE   Paper code (1=letter, 5=legal, 7=exec, 9=A4, 11=A5, 13=B5, ...)
+#   -m CODE   Media type code
+#   -s CODE   Source/InputSlot code
+#   -d CODE   Duplex code (1=off, 2=long, 3=short)
+#   -n NUM    Number of copies
+#   -t        Draft/toner-save mode
+#   -T NUM    Print density (1-5)
+#   -q MODE   Halftone quality (1, as, wts)
+#
+
+# Defaults
+RES=1200x600
+PAPER=1
+MEDIA=1
+SOURCE=7
+DUPLEX=1
+COPIES=1
+DENSITY=3
+SAVETONER=
+GSOPTS=
+
+# Parse arguments
+while getopts "r:p:m:s:d:n:tT:q:o:D:" opt; do
+    case $opt in
+        r) RES="$OPTARG" ;;
+        p) PAPER="$OPTARG" ;;
+        m) MEDIA="$OPTARG" ;;
+        s) SOURCE="$OPTARG" ;;
+        d) DUPLEX="$OPTARG" ;;
+        n) COPIES="$OPTARG" ;;
+        t) SAVETONER="-t" ;;
+        T) DENSITY="$OPTARG" ;;
+        q) case "$OPTARG" in
+               as)  GSOPTS="-dCOLORSCREEN -dMaxBitmap=500000000" ;;
+               wts) GSOPTS="-dCOLORSCREEN -dMaxBitmap=500000000" ;;
+               1)   GSOPTS="-dCOLORSCREEN" ;;
+           esac ;;
+        o|D) ;; # ignore N-up orient and debug
+    esac
+done
+shift $((OPTIND - 1))
+
+# If a file argument remains, read from it
+if [ $# -ge 1 ] && [ -f "$1" ]; then
+    exec < "$1"
+fi
+
+# Map paper code → GS paper name and pixel dimensions at 1200x600
+case "$PAPER" in
+    1)   paper=letter;    XDIM=10200; YDIM=6600 ;;
+    5)   paper=legal;     XDIM=10200; YDIM=8400 ;;
+    7)   paper=executive; XDIM=8700;  YDIM=6300 ;;
+    9)   paper=a4;        XDIM=9920;  YDIM=7016 ;;
+    11)  paper=a5;        XDIM=6992;  YDIM=4960 ;;
+    13)  paper=b5;        XDIM=8598;  YDIM=6070 ;;
+    20)  paper=env10;     XDIM=4950;  YDIM=5700 ;;
+    27)  paper=envDL;     XDIM=5200;  YDIM=5200 ;;
+    28)  paper=envC5;     XDIM=7650;  YDIM=5408 ;;
+    34)  paper=envB5;     XDIM=8316;  YDIM=5892 ;;
+    37)  paper=envMonarch;XDIM=4650;  YDIM=4500 ;;
+    257) paper=executive; XDIM=9306;  YDIM=6448 ;;
+    263) paper=executive; XDIM=8692;  YDIM=6142 ;;
+    264) paper=executive; XDIM=9212;  YDIM=6378 ;;
+    *)   paper=letter;    XDIM=10200; YDIM=6600 ;;
+esac
+
+# Adjust X dimension for resolution
+case "$RES" in
+    600x600)  XDIM=$((XDIM / 2)) ;;
+    1200x600) ;;
+esac
+
+DIM="${XDIM}x${YDIM}"
+
+# Find Ghostscript
+GS=$(command -v gs 2>/dev/null)
+for p in /opt/homebrew/bin/gs /usr/local/bin/gs; do
+    [ -z "$GS" ] && [ -x "$p" ] && GS="$p"
+done
+if [ -z "$GS" ]; then
+    echo "ERROR: foo2xqx-wrapper: gs not found" >&2
+    exit 1
+fi
+
+# Run the pipeline: Ghostscript → foo2xqx
+"$GS" -q -dBATCH -dSAFER -dQUIET -dNOPAUSE \
+    -sPAPERSIZE="$paper" \
+    -g"$DIM" \
+    -r"$RES" \
+    -sDEVICE=pbmraw \
+    $GSOPTS \
+    -sOutputFile=- \
+    - \
+| foo2xqx \
+    -r"$RES" \
+    -g"$DIM" \
+    -p"$PAPER" \
+    -m"$MEDIA" \
+    -n"$COPIES" \
+    -d"$DUPLEX" \
+    -s"$SOURCE" \
+    $SAVETONER \
+    -T"$DENSITY"
+
+exit $?

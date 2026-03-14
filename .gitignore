@@ -1,0 +1,11 @@
+# Build artifacts
+printer/rastertoxqx
+printer/foo2zjs/foo2xqx
+printer/foo2zjs/arm2hpdl
+printer/foo2zjs/xqxdecode
+printer/foo2zjs/sihpP1005.dl
+*.o
+*.dSYM/
+
+# macOS
+.DS_Store
