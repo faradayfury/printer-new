@@ -1,9 +1,9 @@
 # Build artifacts
-printer/rastertoxqx
-printer/foo2zjs/foo2xqx
-printer/foo2zjs/arm2hpdl
-printer/foo2zjs/xqxdecode
-printer/foo2zjs/sihpP1005.dl
+rastertoxqx
+foo2zjs/foo2xqx
+foo2zjs/arm2hpdl
+foo2zjs/xqxdecode
+foo2zjs/sihpP1005.dl
 *.o
 *.dSYM/
 
