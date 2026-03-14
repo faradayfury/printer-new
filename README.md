@@ -108,3 +108,25 @@ The key insight is that macOS's `cgpdftoraster` handles all the PDF rendering na
 The original driver used Ghostscript to rasterize PostScript to PBM bitmaps. But CUPS runs filters in a sandbox that blocks loading Homebrew dylibs. The workaround was `bundle-gs.sh` — a script that copied Ghostscript + 15 dylibs into the CUPS filter directory, rewrote all library paths with `install_name_tool`, and re-codesigned everything. This ~35MB bundle broke on every `brew upgrade ghostscript`.
 
 The new approach eliminates all of that.
+
+## Other Printers
+
+This driver currently works with the P1007, but the approach applies to other models too. The `rastertoxqx` binary should work as-is for these XQX-protocol printers — they just need their own PPD and firmware files:
+
+- HP LaserJet P1005
+- HP LaserJet P1006
+- HP LaserJet P1008
+- HP LaserJet P1505
+
+The LaserJet 1018, 1020, and 1022 use a related protocol (ZjStream) that needs a separate filter binary, but the structure is almost identical to `rastertoxqx` and the work is scoped out.
+
+Beyond HP, the same porting pattern could support printers from Dell, Xerox, Samsung, and Konica Minolta that the foo2zjs project already handles on Linux.
+
+### How to help
+
+If you have one of these printers and a Mac with Apple Silicon, I'd appreciate help testing. You don't need to be a developer.
+
+1. [Open an issue](https://github.com/faradayfury/printer-new/issues/new) with your printer model and macOS version
+2. If you're comfortable running terminal commands, try `sudo ./install.sh` and let me know if it prints
+
+That's it. I'll work through any issues with you from there.
